@@ -2,7 +2,7 @@
 <html>
   <head>
     <meta charset="utf-8">
-    <title>Inline Translate Options</title>
+    <title>Inline Translate Settings</title>
     <style>
       body { font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif; padding: 16px; }
       label { display: block; margin: 12px 0 6px; }
@@ -20,8 +20,9 @@
         <option value="en">English</option>
         <option value="es">Spanish</option>
         <option value="hi">Hindi</option>
+        <option value="te">Telugu</option>
+        <option value="ta">Tamil</option>
         <option value="zh">Chinese</option>
-        <!-- add more later -->
       </select>
     </div>
 
@@ -34,7 +35,10 @@
         <option value="te">Telugu</option>
         <option value="ta">Tamil</option>
         <option value="zh">Chinese</option>
-        <!-- add more later -->
+        <option value="fr">French</option>
+        <option value="de">German</option>
+        <option value="ja">Japanese</option>
+        <option value="ko">Korean</option>
       </select>
     </div>
 
@@ -46,6 +50,11 @@
     <div class="row">
       <label for="bubbleMaxWidth">Bubble max width</label>
       <input id="bubbleMaxWidth" type="text" value="420px" />
+    </div>
+
+    <div class="row">
+      <label for="devFallback">Developer fallback (no real translation)</label>
+      <input id="devFallback" type="checkbox" />
     </div>
 
     <button id="save">Save</button>
