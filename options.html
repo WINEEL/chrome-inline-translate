@@ -1,0 +1,56 @@
+<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8">
+    <title>Inline Translate Options</title>
+    <style>
+      body { font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif; padding: 16px; }
+      label { display: block; margin: 12px 0 6px; }
+      select, input { padding: 6px 8px; }
+      .row { display: flex; gap: 16px; align-items: center; margin-bottom: 8px; }
+    </style>
+  </head>
+  <body>
+    <h2>Inline Translate Settings</h2>
+
+    <div class="row">
+      <label for="sourceLang">Source language</label>
+      <select id="sourceLang">
+        <option value="auto">Auto</option>
+        <option value="en">English</option>
+        <option value="es">Spanish</option>
+        <option value="hi">Hindi</option>
+        <option value="zh">Chinese</option>
+        <!-- add more later -->
+      </select>
+    </div>
+
+    <div class="row">
+      <label for="targetLang">Target language</label>
+      <select id="targetLang">
+        <option value="en">English</option>
+        <option value="es">Spanish</option>
+        <option value="hi">Hindi</option>
+        <option value="te">Telugu</option>
+        <option value="ta">Tamil</option>
+        <option value="zh">Chinese</option>
+        <!-- add more later -->
+      </select>
+    </div>
+
+    <div class="row">
+      <label for="bubbleFontSize">Bubble font size</label>
+      <input id="bubbleFontSize" type="text" value="14px" />
+    </div>
+
+    <div class="row">
+      <label for="bubbleMaxWidth">Bubble max width</label>
+      <input id="bubbleMaxWidth" type="text" value="420px" />
+    </div>
+
+    <button id="save">Save</button>
+    <span id="status"></span>
+
+    <script src="options.js"></script>
+  </body>
+</html>
