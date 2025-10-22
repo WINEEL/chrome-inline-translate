@@ -1,0 +1,34 @@
+# --- OS files (macOS / Windows / Linux) ---
+.DS_Store
+**/.DS_Store
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+$RECYCLE.BIN/
+.Trash-*
+.directory
+
+# --- Editors / temp files ---
+*.swp
+*.swo
+*~
+.~lock.*
+.idea/
+.vscode/
+*.orig
+
+# --- Logs ---
+*.log
+
+# --- Node deps (if you add tooling later) ---
+node_modules/
+
+# --- Builds / packaged artifacts ---
+dist/
+build/
+*.zip
+*.crx
+
+# --- Env (keep secrets out of git) ---
+.env
+.env.*
