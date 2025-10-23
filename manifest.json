@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
   "name": "Inline Translate (On-page Bubble)",
-  "version": "0.1.1",
-  "description": "Select text and see an inline translation bubble. Source language can be Auto or fixed. Target is user choice.",
+  "version": "0.2.0",
+  "description": "Select text and see an inline translation bubble. Source can be Auto or fixed. Target is user choice. Uses Chrome's on-device AI.",
   "icons": { "128": "icons/icon128.png" },
 
   "permissions": ["storage", "contextMenus", "activeTab"],

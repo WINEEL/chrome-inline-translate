@@ -16,6 +16,8 @@
   display: flex;
   align-items: center;
   gap: 8px;
+  font-weight: 600;
+  margin-bottom: 6px;
 }
 
 .inline-translate-bubble .it-actions {
@@ -29,10 +31,17 @@
   border: none;
   border-radius: 8px;
   padding: 6px 10px;
+  background: #1f6feb;
+  color: #fff;
+}
+
+.inline-translate-bubble button#it-close {
+  background: #444;
 }
 
 .inline-translate-bubble .it-drag {
   cursor: move;
   opacity: 0.7;
   font-size: 12px;
+  font-weight: 400;
 }
