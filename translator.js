@@ -1,5 +1,6 @@
 // Chrome on-device AI Translator/LanguageDetector wrapper.
 // Emits window events for progress UI + supports dev fallback.
+// Returns detectInfo {detected:boolean, code?:string, confidence?:number}
 
 function emitProgress(loaded) {
   try { window.dispatchEvent(new CustomEvent('translator-progress', { detail: { loaded } })); } catch {}
@@ -18,19 +19,33 @@ function mockTranslate(text, source, target) {
     const hit = tiny[k]?.[target];
     return hit ? w.replace(new RegExp(k, "i"), hit) : w;
   }).join(" ");
-  return { ok: true, source: source || "auto", output: out === text ? `[${target}] ${text}` : out };
+  return { ok: true, source: source || "auto", output: out === text ? `[${target}] ${text}` : out, detectInfo: { detected:false } };
 }
 
-async function detectSourceIfNeeded(text, srcCandidate) {
+async function detectSource(text, srcCandidate) {
   const hasDetector = typeof self !== "undefined" && ("LanguageDetector" in self);
-  if (srcCandidate && srcCandidate !== "auto") return srcCandidate;
-  if (!hasDetector) return "auto";
+  if (srcCandidate && srcCandidate !== "auto") {
+    return { code: srcCandidate, confidence: 1, detected: false };
+  }
+  if (!hasDetector) {
+    // Heuristic: if text contains many non-Latin letters, leave "auto"
+    const latinRatio = (text.match(/[A-Za-z]/g)||[]).length / Math.max(1, text.length);
+    return { code: latinRatio > 0.7 ? "en" : "auto", confidence: 0, detected: false };
+  }
   try {
     const detector = await LanguageDetector.create();
     const res = await detector.detect(text);
-    return res?.[0]?.detectedLanguage || "auto";
+    const best = Array.isArray(res) ? res[0] : null;
+    // Only trust if reasonable length and confidence ≥ 0.55
+    const conf = Number(best?.confidence ?? 0);
+    const code = best?.detectedLanguage || "auto";
+    const longEnough = text.trim().length >= 20;
+    if (conf >= 0.55 || longEnough) {
+      return { code, confidence: conf, detected: true };
+    }
+    return { code: "auto", confidence: conf, detected: false };
   } catch {
-    return "auto";
+    return { code: "auto", confidence: 0, detected: false };
   }
 }
 
@@ -48,14 +63,14 @@ export async function translateWithOnDeviceAI(text, sourceLang, targetLang) {
   }
 
   const target = targetLang || "en";
-  const resolvedSrc = await detectSourceIfNeeded(text, sourceLang || "auto");
+  const det = await detectSource(text, sourceLang || "auto");
+  const resolvedSrc = det.code || "auto";
 
   try {
-    // Only call availability() when we have concrete tags (not "auto")
     if (resolvedSrc !== "auto") {
       try {
         await Translator.availability({ sourceLanguage: resolvedSrc, targetLanguage: target });
-      } catch { /* availability optional; ignore */ }
+      } catch { /* optional */ }
     }
 
     const translator = await Translator.create({
@@ -72,7 +87,7 @@ export async function translateWithOnDeviceAI(text, sourceLang, targetLang) {
 
     const out = await translator.translate(text);
     emitReady();
-    return { ok: true, source: resolvedSrc, output: out };
+    return { ok: true, source: resolvedSrc, output: out, detectInfo: det };
   } catch (e) {
     if (useMock) return mockTranslate(text, resolvedSrc || "auto", target);
     return { ok: false, error: e?.message || String(e) };

@@ -3,7 +3,7 @@
   z-index: 999999;
   background: #111;
   color: #fff;
-  border-radius: 10px;
+  border-radius: 12px;
   padding: 10px 12px;
   box-shadow: 0 6px 24px rgba(0,0,0,0.25);
   max-width: 420px;
@@ -16,14 +16,30 @@
   display: flex;
   align-items: center;
   gap: 8px;
-  font-weight: 600;
   margin-bottom: 6px;
+}
+.inline-translate-bubble .it-header {
+  margin-bottom: 4px;
+}
+.inline-translate-bubble .it-label {
+  min-width: 72px;
+  color: #bbb;
+  font-size: 12px;
+}
+
+.inline-translate-bubble select {
+  background: #1b1b1b;
+  color: #fff;
+  border: 1px solid #333;
+  border-radius: 8px;
+  padding: 4px 8px;
 }
 
 .inline-translate-bubble .it-actions {
   margin-top: 8px;
   display: flex;
   gap: 8px;
+  flex-wrap: wrap;
 }
 
 .inline-translate-bubble button {
@@ -35,6 +51,12 @@
   color: #fff;
 }
 
+.inline-translate-bubble button.it-ghost {
+  background: #2a2a2a;
+  color: #ddd;
+  padding: 4px 8px;
+}
+
 .inline-translate-bubble button#it-close {
   background: #444;
 }
@@ -44,4 +66,12 @@
   opacity: 0.7;
   font-size: 12px;
   font-weight: 400;
+}
+
+.inline-translate-bubble .it-settings-panel {
+  background: #171717;
+  border: 1px solid #2a2a2a;
+  border-radius: 10px;
+  padding: 8px;
+  margin-bottom: 8px;
 }

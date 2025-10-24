@@ -1,11 +1,21 @@
 // Inline bubble for translating selected text using Chrome built-in AI.
-// Features: progress indicator, swap, per-site memory, robust replace, dev fallback.
+// Features: inline settings panel, progress indicator, swap, per-site memory,
+// robust replace, dev fallback, and toolbar button opens settings in-page.
 
 let lastSelectionText = "";
 let lastTranslation = "";
 let lastUsedLangs = { source: "auto", target: "en" };
 let lastSelectionRange = null;
 let bubbleEl = null;
+
+// ---- Language list for inline settings ----
+const LANGS = [
+  ["auto","Auto"],
+  ["en","English"], ["es","Spanish"], ["hi","Hindi"], ["te","Telugu"],
+  ["ta","Tamil"], ["zh","Chinese"], ["fr","French"], ["de","German"],
+  ["ja","Japanese"], ["ko","Korean"], ["ar","Arabic"], ["pt","Portuguese"],
+  ["it","Italian"], ["ru","Russian"]
+];
 
 // ---- Per-site target memory ----
 async function getPerSiteTarget(defaultTarget = "en") {
@@ -40,10 +50,14 @@ function setBubbleStatus(msg) {
   if (out) out.textContent = msg;
 }
 
-function setBubbleOutput(text, src, tgt) {
+function setBubbleOutput(text, src, tgt, detectInfo) {
   if (!bubbleEl) return;
   const out = bubbleEl.querySelector("#it-output");
-  if (out) out.textContent = `(${src} → ${tgt}) ${text}`;
+  if (!out) return;
+  const hint = detectInfo?.detected && detectInfo.code
+    ? ` ~detected:${detectInfo.code}${typeof detectInfo.confidence === "number" ? `(${Math.round(detectInfo.confidence*100)}%)` : ""}`
+    : "";
+  out.textContent = `(${src} → ${tgt})${hint} ${text}`;
 }
 
 function appendDiagnosticsIfError() {
@@ -139,7 +153,7 @@ async function doTranslate(text) {
     }
 
     lastTranslation = res.output;
-    setBubbleOutput(res.output, res.source || source, target);
+    setBubbleOutput(res.output, res.source || source, target, res.detectInfo);
     await setPerSiteTarget(target);
     return lastTranslation;
   } catch (e) {
@@ -149,17 +163,64 @@ async function doTranslate(text) {
   }
 }
 
+// ---- Inline settings UI ----
+const LANGS_HTML = (cur) =>
+  LANGS.map(([v,l]) => `<option value="${v}" ${v===cur?'selected':''}>${l}</option>`).join("");
+
+async function buildSettingsHTML() {
+  const cfg = await chrome.storage.sync.get(["sourceLang", "targetLang", "devFallback"]);
+  const { target } = await resolveLangs();
+  return `
+    <div class="it-row"><span class="it-label">Source</span>
+      <select id="it-source">${LANGS_HTML(cfg.sourceLang || "auto")}</select>
+    </div>
+    <div class="it-row"><span class="it-label">Target</span>
+      <select id="it-target">${LANGS_HTML(target)}</select>
+    </div>
+    <div class="it-row"><span class="it-label">Dev fallback</span>
+      <input id="it-dev" type="checkbox" ${cfg.devFallback ? "checked": ""} />
+    </div>
+  `;
+}
+
+async function attachSettings(panel) {
+  panel.innerHTML = await buildSettingsHTML();
+
+  const srcSel = panel.querySelector("#it-source");
+  const tgtSel = panel.querySelector("#it-target");
+  const devChk = panel.querySelector("#it-dev");
+
+  srcSel.addEventListener("change", async () => {
+    await chrome.storage.sync.set({ sourceLang: srcSel.value });
+    doTranslate(lastSelectionText || "Hello world"); // still works if opened from toolbar
+  });
+
+  tgtSel.addEventListener("change", async () => {
+    await chrome.storage.sync.set({ targetLang: tgtSel.value });
+    await setPerSiteTarget(tgtSel.value);
+    doTranslate(lastSelectionText || "Hello world");
+  });
+
+  devChk.addEventListener("change", async () => {
+    await chrome.storage.sync.set({ devFallback: devChk.checked });
+    setBubbleStatus("Settings saved. Re-translating…");
+    doTranslate(lastSelectionText || "Hello world");
+  });
+}
+
 // ---- Bubble UI ----
-function makeBubble(text, rect) {
+function makeBubbleBase() {
   removeBubble();
   bubbleEl = document.createElement("div");
   bubbleEl.className = "inline-translate-bubble";
   bubbleEl.innerHTML = `
-    <div class="it-row">
+    <div class="it-row it-header">
       <strong>Translate</strong>
       <span class="it-drag" title="Drag">drag</span>
+      <button id="it-settings" title="Settings" class="it-ghost">⚙︎</button>
     </div>
-    <div class="it-output" id="it-output">Preparing…</div>
+    <div class="it-settings-panel" id="it-settings-panel" hidden></div>
+    <div class="it-output" id="it-output">Ready.</div>
     <div class="it-actions">
       <button id="it-swap" title="Swap source/target">Swap</button>
       <button id="it-copy" title="Copy result">Copy</button>
@@ -174,14 +235,6 @@ function makeBubble(text, rect) {
     bubbleEl.style.fontSize = cfg.bubbleFontSize || "14px";
     bubbleEl.style.maxWidth = cfg.bubbleMaxWidth || "420px";
   });
-
-  // Position near selection, clamp minimally inside viewport
-  const docW = document.documentElement.clientWidth;
-  const docH = document.documentElement.clientHeight;
-  const top = Math.max(8, Math.min(window.scrollY + rect.bottom + 8, window.scrollY + docH - 8));
-  const left = Math.max(8, Math.min(window.scrollX + rect.left, window.scrollX + docW - 8));
-  bubbleEl.style.top = `${top}px`;
-  bubbleEl.style.left = `${left}px`;
 
   // Dragging
   const dragHandle = bubbleEl.querySelector(".it-drag");
@@ -215,14 +268,58 @@ function makeBubble(text, rect) {
   bubbleEl.querySelector("#it-swap").onclick = async () => {
     const { sourceLang, targetLang } = await chrome.storage.sync.get(["sourceLang", "targetLang"]);
     const newSource = (targetLang || "en");
-    const newTarget = (sourceLang || "auto") === "auto" ? "en" : (sourceLang || "en"); // avoid target=auto
+    const newTarget = (sourceLang || "auto") === "auto" ? "en" : (sourceLang || "en");
     await chrome.storage.sync.set({ sourceLang: newSource, targetLang: newTarget });
     await setPerSiteTarget(newTarget);
     setBubbleStatus(`Swapped → ${newTarget}…`);
-    doTranslate(lastSelectionText);
+    if (lastSelectionText) doTranslate(lastSelectionText);
   };
 
-  doTranslate(lastSelectionText);
+  // Settings toggle
+  const settingsBtn = bubbleEl.querySelector("#it-settings");
+  const panel = bubbleEl.querySelector("#it-settings-panel");
+  settingsBtn.onclick = async () => {
+    if (panel.hasAttribute("hidden")) {
+      panel.removeAttribute("hidden");
+      await attachSettings(panel);
+    } else {
+      panel.setAttribute("hidden", "");
+      panel.textContent = "";
+    }
+  };
+}
+
+function makeBubbleForSelection(text, rect) {
+  makeBubbleBase();
+
+  // Position near selection, clamped
+  const docW = document.documentElement.clientWidth;
+  const docH = document.documentElement.clientHeight;
+  const top = Math.max(8, Math.min(window.scrollY + rect.bottom + 8, window.scrollY + docH - 8));
+  const left = Math.max(8, Math.min(window.scrollX + rect.left, window.scrollX + docW - 8));
+  bubbleEl.style.top = `${top}px`;
+  bubbleEl.style.left = `${left}px`;
+
+  setBubbleStatus("Preparing…");
+  doTranslate(text);
+}
+
+async function openSettingsBubbleTopRight() {
+  makeBubbleBase();
+
+  // Top-right corner, with margin
+  const margin = 16;
+  const r = bubbleEl.getBoundingClientRect();
+  const left = window.scrollX + document.documentElement.clientWidth - r.width - margin;
+  const top  = window.scrollY + margin;
+  bubbleEl.style.left = `${Math.max(8, left)}px`;
+  bubbleEl.style.top  = `${Math.max(8, top)}px`;
+
+  // Open panel by default
+  const panel = bubbleEl.querySelector("#it-settings-panel");
+  panel.removeAttribute("hidden");
+  await attachSettings(panel);
+  setBubbleStatus("Ready. Choose languages and select text to translate.");
 }
 
 // ---- Selection flow ----
@@ -238,28 +335,27 @@ function handleSelection(showEvenIfEmpty = false) {
   if (!rect) return;
 
   lastSelectionText = text || lastSelectionText;
-  makeBubble(lastSelectionText, rect);
+  makeBubbleForSelection(lastSelectionText, rect);
 }
 
-// Mouse selection
 document.addEventListener("mouseup", () => {
   const text = window.getSelection()?.toString().trim();
   if (text) handleSelection();
 });
 
-// Close bubble when clicking outside
 document.addEventListener("mousedown", (e) => {
   if (!bubbleEl) return;
   if (!bubbleEl.contains(e.target)) removeBubble();
 }, true);
 
-// Messages from background (context menu / command)
+// Messages from background (context menu / command / toolbar)
 chrome.runtime.onMessage.addListener((msg) => {
   if (msg?.type === "TRANSLATE_SELECTION") handleSelection(true);
   if (msg?.type === "RETRANSLATE_LAST" && lastSelectionText) handleSelection(true);
+  if (msg?.type === "OPEN_SETTINGS") openSettingsBubbleTopRight();
 });
 
-// Optional: ESC closes bubble
+// ESC closes bubble
 document.addEventListener("keydown", (e) => {
   if (e.key === "Escape") removeBubble();
 });

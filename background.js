@@ -1,14 +1,13 @@
-// Set defaults on first install/update
+// Set defaults on install/update and create context menu
 chrome.runtime.onInstalled.addListener(() => {
   chrome.storage.sync.set({
     sourceLang: "auto",
     targetLang: "en",
     bubbleFontSize: "14px",
     bubbleMaxWidth: "420px",
-    devFallback: true // keep true on your laptop; turn off on capable PC
+    devFallback: true
   });
 
-  // Context menu for selection
   chrome.contextMenus.create({
     id: "translateSelection",
     title: "Translate selection",
@@ -17,9 +16,15 @@ chrome.runtime.onInstalled.addListener(() => {
 });
 
 chrome.contextMenus.onClicked.addListener((info, tab) => {
-  if (info.menuItemId === "translateSelection" && tab && tab.id) {
+  if (info.menuItemId === "translateSelection" && tab?.id) {
     chrome.tabs.sendMessage(tab.id, { type: "TRANSLATE_SELECTION" });
   }
+});
+
+// Toolbar click -> open on-page settings bubble (no new tab)
+chrome.action.onClicked.addListener(async (tab) => {
+  if (!tab?.id) return;
+  chrome.tabs.sendMessage(tab.id, { type: "OPEN_SETTINGS" });
 });
 
 // Keyboard command to re-translate last selection
