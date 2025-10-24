@@ -1,12 +1,20 @@
-// Inline bubble for translating selected text using Chrome built-in AI.
-// Features: inline settings panel, progress indicator, swap, per-site memory,
-// robust replace, dev fallback, and toolbar button opens settings in-page.
+// Debounced translate: waits until user stops dragging before translating.
+// Also includes: inline settings, all-frames support, force-select toggle,
+// progress indicator, swap, per-site memory, robust replace, dev fallback.
 
 let lastSelectionText = "";
 let lastTranslation = "";
 let lastUsedLangs = { source: "auto", target: "en" };
 let lastSelectionRange = null;
 let bubbleEl = null;
+let forceStyleEl = null;
+
+// Debounce controls
+const SELECTION_IDLE_MS = 350;      // wait after user stops changing selection
+const MIN_CHARS = 2;                // ignore super short selections
+let isMouseDown = false;
+let selectionIdleTimer = null;
+let lastSeenSelection = "";
 
 // ---- Language list for inline settings ----
 const LANGS = [
@@ -17,25 +25,47 @@ const LANGS = [
   ["it","Italian"], ["ru","Russian"]
 ];
 
-// ---- Per-site target memory ----
+// ---- Per-site target + force-select memory ----
+async function getSitePrefs() {
+  const host = location.host;
+  const { sitePrefs } = await chrome.storage.local.get(["sitePrefs"]);
+  return (sitePrefs || {})[host] || {};
+}
+async function setSitePrefs(patch) {
+  const host = location.host;
+  const { sitePrefs } = await chrome.storage.local.get(["sitePrefs"]);
+  const map = sitePrefs || {};
+  map[host] = { ...(map[host] || {}), ...patch, updatedAt: Date.now() };
+  await chrome.storage.local.set({ sitePrefs: map });
+}
 async function getPerSiteTarget(defaultTarget = "en") {
-  try {
-    const host = location.host;
-    const { sitePrefs } = await chrome.storage.local.get(["sitePrefs"]);
-    const map = sitePrefs || {};
-    return map[host]?.targetLang || defaultTarget;
-  } catch {
-    return defaultTarget;
-  }
+  const prefs = await getSitePrefs();
+  return prefs.targetLang || defaultTarget;
 }
 async function setPerSiteTarget(target) {
-  try {
-    const host = location.host;
-    const { sitePrefs } = await chrome.storage.local.get(["sitePrefs"]);
-    const map = sitePrefs || {};
-    map[host] = { ...(map[host] || {}), targetLang: target, updatedAt: Date.now() };
-    await chrome.storage.local.set({ sitePrefs: map });
-  } catch {}
+  await setSitePrefs({ targetLang: target });
+}
+
+// ---- Force-selectable utilities ----
+function applyForceSelectable(on) {
+  if (on) {
+    if (!forceStyleEl) {
+      forceStyleEl = document.createElement("style");
+      forceStyleEl.id = "it-force-select-style";
+      forceStyleEl.textContent = `
+        * { -webkit-user-select: text !important; user-select: text !important; }
+        input, textarea, button, select { -webkit-user-select: auto !important; user-select: auto !important; }
+      `;
+      document.documentElement.appendChild(forceStyleEl);
+    }
+  } else {
+    forceStyleEl?.remove();
+    forceStyleEl = null;
+  }
+}
+async function initForceSelectableFromPrefs() {
+  const prefs = await getSitePrefs();
+  applyForceSelectable(!!prefs.forceSelectable);
 }
 
 // ---- Bubble helpers ----
@@ -43,13 +73,11 @@ function removeBubble() {
   if (bubbleEl && bubbleEl.parentNode) bubbleEl.parentNode.removeChild(bubbleEl);
   bubbleEl = null;
 }
-
 function setBubbleStatus(msg) {
   if (!bubbleEl) return;
   const out = bubbleEl.querySelector("#it-output");
   if (out) out.textContent = msg;
 }
-
 function setBubbleOutput(text, src, tgt, detectInfo) {
   if (!bubbleEl) return;
   const out = bubbleEl.querySelector("#it-output");
@@ -59,7 +87,6 @@ function setBubbleOutput(text, src, tgt, detectInfo) {
     : "";
   out.textContent = `(${src} → ${tgt})${hint} ${text}`;
 }
-
 function appendDiagnosticsIfError() {
   if (!bubbleEl) return;
   const out = bubbleEl.querySelector("#it-output");
@@ -70,7 +97,6 @@ function appendDiagnosticsIfError() {
     out.textContent += `  (Translator: ${hasT} · Detector: ${hasD})`;
   } catch {}
 }
-
 function replaceSelectionWith(text) {
   try {
     const range = lastSelectionRange;
@@ -78,7 +104,6 @@ function replaceSelectionWith(text) {
     range.deleteContents();
     const node = document.createTextNode(text);
     range.insertNode(node);
-
     const sel = window.getSelection();
     if (sel) {
       sel.removeAllRanges();
@@ -91,7 +116,6 @@ function replaceSelectionWith(text) {
     console.warn("Replace failed:", e);
   }
 }
-
 function getSelectionRect() {
   const sel = window.getSelection();
   if (!sel || sel.rangeCount === 0) return null;
@@ -124,7 +148,6 @@ async function doTranslate(text) {
     const url = chrome.runtime.getURL("translator.js");
     const { translateWithOnDeviceAI } = await import(url);
 
-    // progress listeners (per translation)
     const onProg = (e) => {
       const pct = Math.max(0, Math.min(1, (e?.detail?.loaded ?? 0))) * 100;
       setBubbleStatus(`Downloading model… ${pct.toFixed(0)}%`);
@@ -169,7 +192,9 @@ const LANGS_HTML = (cur) =>
 
 async function buildSettingsHTML() {
   const cfg = await chrome.storage.sync.get(["sourceLang", "targetLang", "devFallback"]);
+  const site = await getSitePrefs();
   const { target } = await resolveLangs();
+
   return `
     <div class="it-row"><span class="it-label">Source</span>
       <select id="it-source">${LANGS_HTML(cfg.sourceLang || "auto")}</select>
@@ -180,6 +205,10 @@ async function buildSettingsHTML() {
     <div class="it-row"><span class="it-label">Dev fallback</span>
       <input id="it-dev" type="checkbox" ${cfg.devFallback ? "checked": ""} />
     </div>
+    <div class="it-row"><span class="it-label">Force selectable</span>
+      <input id="it-force" type="checkbox" ${site.forceSelectable ? "checked": ""} />
+      <span class="it-help">(enable if this site blocks text selection)</span>
+    </div>
   `;
 }
 
@@ -189,22 +218,28 @@ async function attachSettings(panel) {
   const srcSel = panel.querySelector("#it-source");
   const tgtSel = panel.querySelector("#it-target");
   const devChk = panel.querySelector("#it-dev");
+  const forceChk = panel.querySelector("#it-force");
 
   srcSel.addEventListener("change", async () => {
     await chrome.storage.sync.set({ sourceLang: srcSel.value });
-    doTranslate(lastSelectionText || "Hello world"); // still works if opened from toolbar
+    scheduleTranslate(lastSelectionText || "Hello world");
   });
 
   tgtSel.addEventListener("change", async () => {
     await chrome.storage.sync.set({ targetLang: tgtSel.value });
     await setPerSiteTarget(tgtSel.value);
-    doTranslate(lastSelectionText || "Hello world");
+    scheduleTranslate(lastSelectionText || "Hello world");
   });
 
   devChk.addEventListener("change", async () => {
     await chrome.storage.sync.set({ devFallback: devChk.checked });
     setBubbleStatus("Settings saved. Re-translating…");
-    doTranslate(lastSelectionText || "Hello world");
+    scheduleTranslate(lastSelectionText || "Hello world");
+  });
+
+  forceChk.addEventListener("change", async () => {
+    await setSitePrefs({ forceSelectable: forceChk.checked });
+    applyForceSelectable(forceChk.checked);
   });
 }
 
@@ -272,7 +307,7 @@ function makeBubbleBase() {
     await chrome.storage.sync.set({ sourceLang: newSource, targetLang: newTarget });
     await setPerSiteTarget(newTarget);
     setBubbleStatus(`Swapped → ${newTarget}…`);
-    if (lastSelectionText) doTranslate(lastSelectionText);
+    if (lastSelectionText) scheduleTranslate(lastSelectionText);
   };
 
   // Settings toggle
@@ -322,40 +357,85 @@ async function openSettingsBubbleTopRight() {
   setBubbleStatus("Ready. Choose languages and select text to translate.");
 }
 
-// ---- Selection flow ----
-function handleSelection(showEvenIfEmpty = false) {
-  const sel = window.getSelection();
-  if (!sel) return;
-  if (sel.rangeCount > 0) lastSelectionRange = sel.getRangeAt(0).cloneRange();
-
-  const text = sel.toString().trim();
-  if (!text && !showEvenIfEmpty) { removeBubble(); return; }
-
-  const rect = getSelectionRect();
-  if (!rect) return;
-
-  lastSelectionText = text || lastSelectionText;
-  makeBubbleForSelection(lastSelectionText, rect);
+// ---- Debounced selection handling ----
+function scheduleTranslate(text) {
+  // Only if bubble exists (settings or a selection bubble)
+  if (bubbleEl) {
+    setBubbleStatus(`Translating…`);
+    doTranslate(text);
+  }
 }
 
-document.addEventListener("mouseup", () => {
-  const text = window.getSelection()?.toString().trim();
-  if (text) handleSelection();
-});
+function scheduleSelectionBubble() {
+  clearTimeout(selectionIdleTimer);
+  selectionIdleTimer = setTimeout(() => {
+    const sel = window.getSelection();
+    if (!sel || sel.rangeCount === 0) return;
 
-document.addEventListener("mousedown", (e) => {
-  if (!bubbleEl) return;
-  if (!bubbleEl.contains(e.target)) removeBubble();
+    const text = sel.toString().trim();
+    if (text.length < MIN_CHARS) return;
+
+    // Save stable range for Replace
+    lastSelectionRange = sel.getRangeAt(0).cloneRange();
+    lastSelectionText = text;
+    lastSeenSelection = text;
+
+    const rect = getSelectionRect();
+    if (!rect) return;
+
+    makeBubbleForSelection(text, rect);
+  }, SELECTION_IDLE_MS);
+}
+
+// Mouse down/up toggles: we only finalize after mouseup (and idle)
+document.addEventListener("mousedown", () => { isMouseDown = true; }, true);
+document.addEventListener("mouseup", () => {
+  isMouseDown = false;
+  // After releasing, wait idle then finalize (selectionchange will have run)
+  scheduleSelectionBubble();
+}, true);
+
+// Keyboard / programmatic selection changes: debounce
+document.addEventListener("selectionchange", () => {
+  const text = (window.getSelection()?.toString() || "").trim();
+  if (text.length < MIN_CHARS) return;
+
+  // Avoid spamming while dragging; still reset the timer so we act after idle
+  clearTimeout(selectionIdleTimer);
+  if (isMouseDown) {
+    // Will be scheduled on mouseup
+    return;
+  }
+  // If selection keeps changing, this keeps resetting until idle
+  scheduleSelectionBubble();
 }, true);
 
 // Messages from background (context menu / command / toolbar)
 chrome.runtime.onMessage.addListener((msg) => {
-  if (msg?.type === "TRANSLATE_SELECTION") handleSelection(true);
-  if (msg?.type === "RETRANSLATE_LAST" && lastSelectionText) handleSelection(true);
+  if (msg?.type === "TRANSLATE_SELECTION") {
+    // Force-finalize whatever selection exists now
+    scheduleSelectionBubble();
+  }
+  if (msg?.type === "RETRANSLATE_LAST" && lastSelectionText) {
+    // Re-run on last known text without reselecting
+    if (bubbleEl) scheduleTranslate(lastSelectionText);
+    else {
+      // Recreate bubble near current selection if possible
+      const rect = getSelectionRect();
+      if (rect) makeBubbleForSelection(lastSelectionText, rect);
+    }
+  }
   if (msg?.type === "OPEN_SETTINGS") openSettingsBubbleTopRight();
 });
 
-// ESC closes bubble
+// Close on outside click & ESC
+document.addEventListener("mousedown", (e) => {
+  if (!bubbleEl) return;
+  if (!bubbleEl.contains(e.target)) removeBubble();
+}, true);
 document.addEventListener("keydown", (e) => {
   if (e.key === "Escape") removeBubble();
 });
+
+// Initialize site-specific settings on load
+initForceSelectableFromPrefs();

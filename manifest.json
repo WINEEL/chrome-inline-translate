@@ -1,34 +1,29 @@
 {
   "manifest_version": 3,
   "name": "Inline Translate (On-page Bubble)",
-  "version": "0.2.1",
+  "version": "0.2.2",
   "description": "Select text and see an inline translation bubble. Source can be Auto or fixed. Target is user choice. Uses Chrome's on-device AI.",
   "icons": { "128": "icons/icon128.png" },
 
   "permissions": ["storage", "contextMenus", "activeTab"],
 
-  "background": {
-    "service_worker": "background.js"
-  },
+  "background": { "service_worker": "background.js" },
 
-  "action": {
-    "default_title": "Inline Translate — open settings"
-  },
+  "action": { "default_title": "Inline Translate — open settings" },
 
   "content_scripts": [
     {
       "matches": ["<all_urls>"],
       "js": ["content.js"],
       "css": ["content.css"],
-      "run_at": "document_end"
+      "run_at": "document_end",
+      "all_frames": true,
+      "match_about_blank": true
     }
   ],
 
   "web_accessible_resources": [
-    {
-      "resources": ["translator.js"],
-      "matches": ["<all_urls>"]
-    }
+    { "resources": ["translator.js"], "matches": ["<all_urls>"] }
   ],
 
   "commands": {
