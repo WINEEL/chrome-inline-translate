@@ -1,95 +1,65 @@
-// Chrome on-device AI Translator/LanguageDetector wrapper.
-// Emits window events for progress UI + supports dev fallback.
-// Returns detectInfo {detected:boolean, code?:string, confidence?:number}
+let cached = {}; // key: `${src||auto}|${tgt}`
 
-function emitProgress(loaded) {
-  try { window.dispatchEvent(new CustomEvent('translator-progress', { detail: { loaded } })); } catch {}
+function dispatchProgress(p) {
+  try { window.dispatchEvent(new CustomEvent("translator-progress", { detail: { loaded: p } })); } catch {}
 }
-function emitReady() {
-  try { window.dispatchEvent(new CustomEvent('translator-ready')); } catch {}
-}
+function dispatchReady() { try { window.dispatchEvent(new CustomEvent("translator-ready")); } catch {} }
 
-function mockTranslate(text, source, target) {
-  const tiny = {
-    hello: { es: "hola", hi: "नमस्ते", te: "హలో", ta: "வணக்கம்", fr: "bonjour" },
-    world: { es: "mundo", hi: "दुनिया", te: "ప్రపంచం", ta: "உலகம்", fr: "monde" }
-  };
-  const out = text.split(/\s+/).map(w => {
-    const k = w.toLowerCase().replace(/[^a-z]/gi, "");
-    const hit = tiny[k]?.[target];
-    return hit ? w.replace(new RegExp(k, "i"), hit) : w;
-  }).join(" ");
-  return { ok: true, source: source || "auto", output: out === text ? `[${target}] ${text}` : out, detectInfo: { detected:false } };
-}
-
-async function detectSource(text, srcCandidate) {
-  const hasDetector = typeof self !== "undefined" && ("LanguageDetector" in self);
-  if (srcCandidate && srcCandidate !== "auto") {
-    return { code: srcCandidate, confidence: 1, detected: false };
-  }
-  if (!hasDetector) {
-    // Heuristic: if text contains many non-Latin letters, leave "auto"
-    const latinRatio = (text.match(/[A-Za-z]/g)||[]).length / Math.max(1, text.length);
-    return { code: latinRatio > 0.7 ? "en" : "auto", confidence: 0, detected: false };
-  }
+async function maybeDetectSource(text, source) {
+  if (source && source !== "auto") return { code: source, confidence: 1, detected: true };
   try {
-    const detector = await LanguageDetector.create();
-    const res = await detector.detect(text);
-    const best = Array.isArray(res) ? res[0] : null;
-    // Only trust if reasonable length and confidence ≥ 0.55
-    const conf = Number(best?.confidence ?? 0);
-    const code = best?.detectedLanguage || "auto";
-    const longEnough = text.trim().length >= 20;
-    if (conf >= 0.55 || longEnough) {
-      return { code, confidence: conf, detected: true };
-    }
-    return { code: "auto", confidence: conf, detected: false };
-  } catch {
-    return { code: "auto", confidence: 0, detected: false };
-  }
+    if (!("LanguageDetector" in self)) return null;
+    const det = await LanguageDetector.create();
+    const r = await det.detect(text);
+    const code =
+      r?.language ?? r?.detectedLanguage ?? r?.detected ?? r?.code ?? r?.lang ?? "en";
+    const conf =
+      (typeof r?.confidence === "number" && r.confidence) ??
+      (typeof r?.probability === "number" && r.probability) ??
+      (typeof r?.score === "number" && r.score) ??
+      1;
+    return { code, confidence: conf, detected: true };
+  } catch { return null; }
+}
+
+function mockTranslate(text, target) {
+  const tiny = { es:{Hello:"Hola"}, te:{banana:"అరటిపండు"} };
+  let out = text, map = tiny[target] || {};
+  for (const [k,v] of Object.entries(map)) out = out.replace(new RegExp(`\\b${k}\\b`,"gi"), v);
+  return `[${target}] ${out}`;
 }
 
 export async function translateWithOnDeviceAI(text, sourceLang, targetLang) {
-  if (!text?.trim()) return { ok: false, error: "Empty text." };
+  const { devFallback } = await chrome.storage.sync.get(["devFallback"]);
 
-  const cfg = await chrome.storage.sync.get(["devFallback"]);
-  const useMock = !!cfg.devFallback;
-
-  const hasTranslator = typeof self !== "undefined" && ("Translator" in self);
-  if (!hasTranslator) {
-    return useMock
-      ? mockTranslate(text, sourceLang || "auto", targetLang || "en")
-      : { ok: false, error: "Translator API not available on this Chrome." };
+  if (!("Translator" in self)) {
+    if (devFallback) return { ok:true, output: mockTranslate(text, targetLang), source: sourceLang || "auto", detectInfo:{detected:false} };
+    return { ok:false, error:"On-device Translator API not available in this Chrome." };
   }
 
-  const target = targetLang || "en";
-  const det = await detectSource(text, sourceLang || "auto");
-  const resolvedSrc = det.code || "auto";
-
   try {
-    if (resolvedSrc !== "auto") {
-      try {
-        await Translator.availability({ sourceLanguage: resolvedSrc, targetLanguage: target });
-      } catch { /* optional */ }
+    const det = await maybeDetectSource(text, sourceLang);
+    const src = det?.code || (sourceLang === "auto" ? undefined : sourceLang);
+
+    const monitor = (m) => {
+      m?.addEventListener?.("downloadprogress", (e) => dispatchProgress(e?.progress ?? e?.loaded ?? 0));
+      m?.addEventListener?.("ready", () => dispatchReady());
+    };
+
+    const key = `${src || "auto"}|${targetLang}`;
+    let translator = cached[key];
+    if (!translator) {
+      const opts = { targetLanguage: targetLang, monitor };
+      if (src) opts.sourceLanguage = src;
+      translator = await Translator.create(opts);
+      cached[key] = translator;
+      dispatchReady();
     }
 
-    const translator = await Translator.create({
-      sourceLanguage: resolvedSrc,
-      targetLanguage: target,
-      monitor(m) {
-        m.addEventListener("downloadprogress", (e) => {
-          const v = typeof e.loaded === "number" ? e.loaded : 0;
-          emitProgress(v);
-          if (v >= 1) emitReady();
-        });
-      }
-    });
-
-    const out = await translator.translate(text);
-    emitReady();
-    return { ok: true, source: resolvedSrc, output: out, detectInfo: det };
+    const output = await translator.translate(text);
+    return { ok:true, output, source: src || "auto", detectInfo: det || { detected:false } };
   } catch (e) {
-    if (useMock) return mockTranslate(text, resolvedSrc || "auto", target);
-    return { ok: false, error: e?.message || String(e) };
+    if (devFallback) return { ok:true, output: mockTranslate(text, targetLang), source: sourceLang || "auto", detectInfo:{detected:false}, note:"dev-fallback" };
+    return { ok:false, error: e?.message || String(e) };
   }
 }

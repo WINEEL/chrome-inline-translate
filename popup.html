@@ -1,0 +1,48 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>Inline Translate</title>
+  <style>
+    :root { color-scheme: light dark; }
+    body { font: 13px/1.4 system-ui, -apple-system, Segoe UI, Roboto, sans-serif; margin: 12px; min-width: 300px; }
+    h1 { margin:0 0 8px; font-size:14px; }
+    .grid2 { display:grid; grid-template-columns:1fr auto; gap:10px; align-items:center; }
+    .row { display:flex; gap:10px; align-items:center; }
+    .label { opacity:.85; font-weight:600; font-size:12px; width:110px; }
+    select, input[type="checkbox"] { background:transparent; color:inherit; border:1px solid color-mix(in oklab, CanvasText 20%, transparent); border-radius:8px; padding:4px 6px; }
+    .switch { position:relative; display:inline-block; width:44px; height:24px; }
+    .switch input { opacity:0; width:0; height:0; }
+    .slider { position:absolute; inset:0; border-radius:999px; background:color-mix(in oklab, CanvasText 18%, transparent); transition:.2s; cursor:pointer; }
+    .slider:before { content:""; position:absolute; height:18px; width:18px; left:3px; top:3px; background:Canvas; border-radius:50%; box-shadow:0 1px 2px rgba(0,0,0,.25); transition:.2s; }
+    input:checked + .slider { background:#16a34a; }
+    input:checked + .slider:before { transform:translateX(20px); }
+    .section { margin-top:10px; padding-top:10px; border-top:1px solid color-mix(in oklab, CanvasText 12%, transparent); }
+    .hint { opacity:.7; font-size:12px; margin-top:4px; }
+    .host { font-weight:600; }
+  </style>
+</head>
+<body>
+  <h1>Inline Translate</h1>
+
+  <div class="grid2">
+    <div>Enable everywhere</div>
+    <label class="switch"><input id="g-toggle" type="checkbox"><span class="slider"></span></label>
+  </div>
+  <div class="hint">Turn off to stop the bubble on all sites.</div>
+
+  <div class="section grid2">
+    <div>Pause on this site <span id="host" class="host"></span></div>
+    <label class="switch"><input id="site-toggle" type="checkbox"><span class="slider"></span></label>
+  </div>
+
+  <div class="section">
+    <div class="row"><div class="label">Source</div><select id="source"></select></div>
+    <div class="row" style="margin-top:6px;"><div class="label">Target</div><select id="target"></select></div>
+    <div class="row" style="margin-top:6px;"><div class="label">Dev fallback</div><input id="dev" type="checkbox"></div>
+    <div class="row" style="margin-top:6px;"><div class="label">Force selectable</div><input id="force" type="checkbox"><span class="hint">(use if site blocks text selection)</span></div>
+  </div>
+
+  <script src="popup.js"></script>
+</body>
+</html>

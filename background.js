@@ -1,38 +1,34 @@
-// Set defaults on install/update and create context menu
-chrome.runtime.onInstalled.addListener(() => {
-  chrome.storage.sync.set({
+chrome.runtime.onInstalled.addListener(async () => {
+  const defaults = {
+    enabled: true,
     sourceLang: "auto",
     targetLang: "en",
+    devFallback: false,
     bubbleFontSize: "14px",
-    bubbleMaxWidth: "420px",
-    devFallback: true
-  });
+    bubbleMaxWidth: "420px"
+  };
+  const cur = await chrome.storage.sync.get(Object.keys(defaults));
+  const patch = {};
+  for (const k of Object.keys(defaults)) if (typeof cur[k] === "undefined") patch[k] = defaults[k];
+  if (Object.keys(patch).length) await chrome.storage.sync.set(patch);
 
-  chrome.contextMenus.create({
-    id: "translateSelection",
-    title: "Translate selection",
-    contexts: ["selection"]
+  chrome.contextMenus.removeAll(() => {
+    chrome.contextMenus.create({
+      id: "translate-selection",
+      title: "Translate selection (Inline Translate)",
+      contexts: ["selection"]
+    });
   });
 });
 
 chrome.contextMenus.onClicked.addListener((info, tab) => {
-  if (info.menuItemId === "translateSelection" && tab?.id) {
+  if (info.menuItemId === "translate-selection" && tab?.id) {
     chrome.tabs.sendMessage(tab.id, { type: "TRANSLATE_SELECTION" });
   }
 });
 
-// Toolbar click -> open on-page settings bubble (no new tab)
-chrome.action.onClicked.addListener(async (tab) => {
-  if (!tab?.id) return;
-  chrome.tabs.sendMessage(tab.id, { type: "OPEN_SETTINGS" });
-});
-
-// Keyboard command to re-translate last selection
-chrome.commands.onCommand.addListener((command) => {
-  if (command === "retranslate-last-selection") {
-    chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
-      const id = tabs[0]?.id;
-      if (id) chrome.tabs.sendMessage(id, { type: "RETRANSLATE_LAST" });
-    });
+chrome.commands.onCommand.addListener((cmd, tab) => {
+  if (cmd === "retranslate-last-selection" && tab?.id) {
+    chrome.tabs.sendMessage(tab.id, { type: "RETRANSLATE_LAST" });
   }
 });
