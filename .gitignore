@@ -32,3 +32,6 @@ build/
 # --- Env (keep secrets out of git) ---
 .env
 .env.*
+
+# --- Media (Screen recording)
+media/
