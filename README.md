@@ -12,6 +12,7 @@ Repo: https://github.com/WINEEL/chrome-inline-translate
 ## Table of contents
 
 - [The story](#the-story)
+- [Demo Video](#demo-video)
 - [What it does](#what-it-does)
 - [Language coverage](#language-coverage)
 - [How it uses Chrome Built-in AI](#how-it-uses-chrome-built-in-ai)
@@ -98,6 +99,15 @@ I have spent a lot of time trying to understand hard things. Language friction s
 This began as a personal itch. It is now a tool I keep on every page. If it lets someone stay in the flow for one more paragraph, it will have done its job.
 
 
+## Demo video
+
+[![Inline Translate (on-page bubble) - Chrome Built-in AI](media/image.png "Inline Translate (on-page bubble) - Chrome Built-in AI")](https://youtu.be/YPNfX8uR3bM)
+
+YouTube: https://youtu.be/YPNfX8uR3bM
+
+> The video is silent and uses on-screen captions. It shows selection &rarr; inline bubble &rarr; on-page settings &rarr; popup &rarr; Chrome Built-in AI availability.
+
+
 ## What it does
 
 - Inline translation bubble appears near your selection after a short idle delay  
@@ -110,7 +120,7 @@ This began as a personal itch. It is now a tool I keep on every page. If it lets
 - **Force Selectable** option for sites that block text selection  
 - **Popup** with global **Enable everywhere** and **Pause on this site**  
 - Keyboard: **Alt+Shift+T** re-translates the last selection  
-- Context menu: right-click selection → Translate selection
+- Context menu: right-click selection &rarr; Translate selection
 
 
 ## Language coverage
