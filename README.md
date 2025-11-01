@@ -237,6 +237,8 @@ content.css
 content.js
 icons/
   icon128.png
+media/
+  image.png
 manifest.json
 options.html
 options.js
@@ -256,6 +258,7 @@ translator.js
 - **popup.html / popup.js** - global enable, per-site pause, quick language toggles  
 - **options.html / options.js** - reserved for future advanced settings  
 - **icons/** - extension icon  
+- **media/** - image used in the README.md
 - **LICENCE** - MIT License
 
 
